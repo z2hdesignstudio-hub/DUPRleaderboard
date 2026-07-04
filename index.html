@@ -446,12 +446,12 @@ function renderOverall(data){
     <th>Events</th><th>Singles Won</th><th>Doubles Won</th><th>Bonus</th><th>Total Points</th></tr></thead>`;
   document.getElementById('overallContent').innerHTML=`
     <div class="card gender-section">
-      <h2 class="gender-head girls">Girls - Top 12</h2>
-      ${data.girls.length?'<div class="tscroll"><table>'+head+'<tbody>'+rows(data.girls)+'</tbody></table></div>':'<div class="empty-msg">No girls rankings yet.</div>'}
+      <h2 class="gender-head girls">Queens - Top 12</h2>
+      ${data.girls.length?'<div class="tscroll"><table>'+head+'<tbody>'+rows(data.girls)+'</tbody></table></div>':'<div class="empty-msg">No Queens rankings yet.</div>'}
     </div>
     <div class="card gender-section">
-      <h2 class="gender-head boys">Boys - Top 36</h2>
-      ${data.boys.length?'<div class="tscroll"><table>'+head+'<tbody>'+rows(data.boys)+'</tbody></table></div>':'<div class="empty-msg">No boys rankings yet.</div>'}
+      <h2 class="gender-head boys">Kings - Top 36</h2>
+      ${data.boys.length?'<div class="tscroll"><table>'+head+'<tbody>'+rows(data.boys)+'</tbody></table></div>':'<div class="empty-msg">No Kings rankings yet.</div>'}
     </div>`;
 }
 
