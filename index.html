@@ -229,6 +229,7 @@ let currentWeek = getCurrentWeek();
 let weekData = null;
 const _debounce = {};
 let _deleteIndex = null;
+let _editConfirmed = false; // once admin OKs the published-edit warning, don't ask again until next load
 
 /* ======================== tabs ======================== */
 function switchTab(tab){
@@ -243,6 +244,7 @@ function esc(v){ return String(v==null?'':v).replace(/"/g,'&quot;').replace(/'/g
 function changeWeek(delta){ currentWeek=Math.max(14,currentWeek+delta); loadWeekPoints(); }
 
 async function loadWeekPoints(){
+  _editConfirmed = false; // reset so the warning shows again for a newly loaded week
   document.getElementById('weekLabel').textContent='Week '+currentWeek;
   document.getElementById('weekContent').innerHTML='<div class="loading">Loading…</div>';
   try{
@@ -285,7 +287,6 @@ function renderWeekTable(){
 
 function buildWeekRows(){
   return weekData.rows.map(r=>{
-    const hasData=String(r.name||'').trim()!=='';
     return `<tr>
       <td>${r.rank||'-'}</td>
       <td class="left">${nameInput(r)}</td>
@@ -295,7 +296,7 @@ function buildWeekRows(){
       <td>${ptsInput(r,'doublesWon')}</td>
       <td>${ptsInput(r,'bonusPoints')}</td>
       <td class="tot" id="tot-${r.index}">${r.totalPoints}</td>
-      <td>${hasData?`<button class="rm-btn" onclick="openDeleteModal(${r.index},'${esc(r.name)}')">Remove</button>`:''}</td>
+      <td><button class="rm-btn" onclick="openDeleteModal(${r.index},'${esc(r.name)}')">Remove</button></td>
     </tr>`;
   }).join('');
 }
@@ -303,6 +304,7 @@ function buildWeekRows(){
 function nameInput(r){
   return `<input type="text" class="name-inp" value="${esc(r.name||'')}" placeholder="Player name"
     id="name-${r.index}"
+    onkeydown="enterNextW4(event,this)"
     onchange="saveWeekCell(this,${r.index},'name')"
     onfocus="checkPublishedEdit(event,this)">`;
 }
@@ -317,18 +319,30 @@ function genderToggle(r){
 
 function ptsInput(r,field){
   return `<input class="pts" type="number" min="0" value="${r[field]}"
+    onkeydown="enterNextW4(event,this)"
     onchange="saveWeekCell(this,${r.index},'${field}')"
     onfocus="checkPublishedEdit(event,this)">`;
 }
 
 /* ======================== edit handlers ======================== */
 function checkPublishedEdit(event,el){
-  if(weekData&&weekData.published){
+  if(weekData&&weekData.published&&!_editConfirmed){
     el.blur();
-    if(!confirm('You are about to edit published data! Do you still want to proceed?'))
-      { event.preventDefault(); return; }
+    if(!confirm('You are about to edit published data! Do you still want to proceed?')){
+      event.preventDefault(); return;
+    }
+    _editConfirmed=true; // don't ask again until the week is reloaded
     el.focus();
   }
+}
+
+/* Enter-to-next-field for the week points table */
+function enterNextW4(event,el){
+  if(event.key!=='Enter') return; event.preventDefault();
+  const inputs=Array.from(document.querySelectorAll(
+    '#weekContent input[type=text],#weekContent input[type=number]'));
+  const i=inputs.indexOf(el);
+  if(i>-1&&i<inputs.length-1) inputs[i+1].focus(); else el.blur();
 }
 
 // Debounced save for text + numeric inputs
@@ -345,13 +359,15 @@ async function _doSaveWeekCell(el,index,field){
     const out=await res.json();
     if(out.ok){
       el.classList.add('saved'); setTimeout(()=>el.classList.remove('saved'),1000);
-      // Update total only for numeric fields (newTotal is null for name/gender)
+      // PERF: update total in-place (no full reload)
       if(out.newTotal!==null&&out.newTotal!==undefined){
         const totEl=document.getElementById('tot-'+index); if(totEl) totEl.textContent=out.newTotal;
       }
-      // If name changed, update the remove button visibility
-      if(field==='name') loadWeekPoints();
-      else toast('Saved');
+      // PERF: update local state so subsequent operations use fresh values
+      const row=weekData&&weekData.rows.find(r=>r.index===index);
+      if(row) row[field]=(field==='name'||field==='gender')?el.value:(Number(el.value)||0);
+      toast('Saved');
+      // Delete button is always visible now — no full reload needed after name changes
     }else{ el.classList.add('err'); setTimeout(()=>el.classList.remove('err'),1500); toast(out.error||'Save failed'); }
   }catch(e){ el.classList.add('err'); setTimeout(()=>el.classList.remove('err'),1500); toast('Network error'); }
 }
@@ -386,6 +402,12 @@ async function addPlayer(){
 
 function openDeleteModal(index,name){
   _deleteIndex=index;
+  // Blank row: no BeE needed — just a quick confirm and delete
+  if(!name||!name.trim()){
+    if(confirm('Remove this empty row?')){ confirmDelete(); }
+    return;
+  }
+  // Named row: require BeE
   document.getElementById('deletePlayerName').textContent='Removing: '+name;
   document.getElementById('deleteConfirmInput').value='';
   document.getElementById('deleteConfirmInput').classList.remove('match');
