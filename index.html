@@ -129,6 +129,16 @@ td input.pts.err{border-color:var(--pink);}
   animation:blink 1.2s ease-in-out infinite;}
 @keyframes blink{0%,100%{opacity:1;}50%{opacity:.3;}}
 .gender-section{margin-bottom:28px;}
+/* Overall search */
+.w4-search-wrap{margin-bottom:18px;}
+.w4-search{width:100%;font-family:'Nunito',sans-serif;font-weight:700;font-size:.95rem;
+  color:var(--ink);padding:12px 14px;border:none;border-radius:var(--r-sm);
+  background:var(--surface-2);box-shadow:var(--clay-in);outline:none;}
+/* Separator row between toppers and the rest */
+tr.lb-sep-row td{padding:2px 0;border:none;background:transparent;}
+tr.lb-sep-row td div{height:2px;background:linear-gradient(90deg,transparent,var(--surface-2),transparent);margin:2px 0;}
+/* Players outside top 12/36 slightly muted */
+tr.lb-outside td{opacity:.7;}
 .gender-head{font-family:'Fredoka',sans-serif;font-weight:600;font-size:1.2rem;
   margin-bottom:12px;padding-bottom:8px;border-bottom:3px solid var(--surface-2);}
 .gender-head.girls{color:var(--pink);}
@@ -464,7 +474,8 @@ async function loadOverall(){
 
 function renderOverall(data){
   const paused=data&&data.paused;
-  // Always render the pause/resume bar at the top
+  const gc=data&&data.girlsCutoff||12, bc=data&&data.boysCutoff||36;
+
   const pauseBar=`<div class="pause-bar">
     <button class="pause-btn-w4 ${paused?'resume':'pause'}" onclick="toggleLeaderboard(${!paused})">
       ${paused?'Resume Publish':'Pause Publish'}
@@ -477,25 +488,51 @@ function renderOverall(data){
       pauseBar+'<div class="card"><div class="empty-msg">Overall rankings appear once the first week is published.</div></div>';
     return;
   }
+
   const mc=rank=>rank===1?'rank-medal':rank===2?'rank-silver':rank===3?'rank-bronze':'';
-  const rows=players=>players.map(p=>`<tr>
-    <td class="${mc(p.rank)}">${p.rank}</td>
-    <td class="left">${p.name}</td>
-    <td><span class="gbadge ${p.gender}">${p.gender}</span></td>
-    <td>${p.eventsPlayed}</td><td>${p.singlesWon}</td><td>${p.doublesWon}</td>
-    <td>${p.bonusPoints}</td><td class="tot">${p.totalPoints}</td>
-  </tr>`).join('');
+
+  // Build table rows with separator at the cutoff
+  const buildRows=(players,cutoff)=>players.map((p,i)=>{
+    const outside=i>=cutoff;
+    const sep=(i===cutoff)?`<tr class="lb-sep-row"><td colspan="8"><div></div></td></tr>`:'';
+    return sep+`<tr data-name="${p.name.toLowerCase()}" class="${outside?'lb-outside':''}">
+      <td class="${mc(p.rank)}">${p.rank}</td>
+      <td class="left">${p.name}</td>
+      <td><span class="gbadge ${p.gender}">${p.gender}</span></td>
+      <td>${p.eventsPlayed}</td><td>${p.singlesWon}</td><td>${p.doublesWon}</td>
+      <td>${p.bonusPoints}</td><td class="tot">${p.totalPoints}</td>
+    </tr>`;
+  }).join('');
+
   const head=`<thead><tr><th>Rank</th><th class="left">Name</th><th>Gender</th>
     <th>Events</th><th>Singles Won</th><th>Doubles Won</th><th>Bonus</th><th>Total Points</th></tr></thead>`;
-  document.getElementById('overallContent').innerHTML=pauseBar+`
+
+  const searchBar=`<div class="w4-search-wrap">
+    <input class="w4-search" type="text" placeholder="Search player name…" oninput="filterW4Search(this.value)">
+  </div>`;
+
+  document.getElementById('overallContent').innerHTML=pauseBar+searchBar+`
     <div class="card gender-section">
-      <h2 class="gender-head girls">Queens - Top 12</h2>
-      ${data.girls.length?'<div class="tscroll"><table>'+head+'<tbody>'+rows(data.girls)+'</tbody></table></div>':'<div class="empty-msg">No Queens rankings yet.</div>'}
+      <h2 class="gender-head girls">Queens</h2>
+      ${data.girls.length?'<div class="tscroll"><table>'+head+'<tbody id="girlsTbody">'+buildRows(data.girls,gc)+'</tbody></table></div>':'<div class="empty-msg">No Queens rankings yet.</div>'}
     </div>
     <div class="card gender-section">
-      <h2 class="gender-head boys">Kings - Top 36</h2>
-      ${data.boys.length?'<div class="tscroll"><table>'+head+'<tbody>'+rows(data.boys)+'</tbody></table></div>':'<div class="empty-msg">No Kings rankings yet.</div>'}
+      <h2 class="gender-head boys">Kings</h2>
+      ${data.boys.length?'<div class="tscroll"><table>'+head+'<tbody id="boysTbody">'+buildRows(data.boys,bc)+'</tbody></table></div>':'<div class="empty-msg">No Kings rankings yet.</div>'}
     </div>`;
+}
+
+/* Real-time search — filters both Queens and Kings tables simultaneously */
+function filterW4Search(query){
+  const q=query.toLowerCase().trim();
+  document.querySelectorAll('#overallContent tbody tr[data-name]').forEach(row=>{
+    const name=row.dataset.name||'';
+    row.style.display=(!q||name.includes(q))?'':'none';
+  });
+  // Always keep separator rows visible
+  document.querySelectorAll('#overallContent tbody tr.lb-sep-row').forEach(row=>{
+    row.style.display='';
+  });
 }
 
 async function toggleLeaderboard(pause){
