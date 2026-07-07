@@ -515,11 +515,11 @@ function renderOverall(data){
 
   document.getElementById('overallContent').innerHTML=pauseBar+searchBar+`
     <div class="card gender-section">
-      <h2 class="gender-head girls">Queens</h2>
+      <h2 class="gender-head girls">Queens - Top 12 will move to DNL</h2>
       ${data.girls.length?'<div class="tscroll"><table>'+head+'<tbody id="girlsTbody">'+buildRows(data.girls,gc)+'</tbody></table></div>':'<div class="empty-msg">No Queens rankings yet.</div>'}
     </div>
     <div class="card gender-section">
-      <h2 class="gender-head boys">Kings</h2>
+      <h2 class="gender-head boys">Kings - Top 36 will move to DNL</h2>
       ${data.boys.length?'<div class="tscroll"><table>'+head+'<tbody id="boysTbody">'+buildRows(data.boys,bc)+'</tbody></table></div>':'<div class="empty-msg">No Kings rankings yet.</div>'}
     </div>`;
 }
