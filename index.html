@@ -183,7 +183,7 @@ tr.lb-outside td{opacity:.7;}
 <div class="wrap">
   <header>
     <img src="./picklebee-logo.png" class="logo" alt="PickleBee by 71" onerror="this.style.display='none'">
-    <div class="eyebrow">Season 2 — Admin</div>
+    <div class="eyebrow" id="eyebrow">Admin</div>
     <h1>HIVE <span class="hl">Rankings</span></h1>
   </header>
 
@@ -237,6 +237,31 @@ function getCurrentWeek(){
   return 14+Math.floor((Date.now()-WEEK14_START.getTime())/(7*24*3600*1000));
 }
 
+/* ---- season labeling — mirrors Code.gs's SEASON_BOUNDARIES exactly.
+   Only used to LABEL weeks; keep this table in sync with the backend
+   whenever a new season is added. ---- */
+const SEASON_BOUNDARIES = [
+  {season:1, startWeek:1},
+  {season:2, startWeek:14},
+  {season:3, startWeek:29},
+];
+function getSeasonInfo(weekNum){
+  let cur=SEASON_BOUNDARIES[0];
+  for(const b of SEASON_BOUNDARIES){ if(weekNum>=b.startWeek) cur=b; else break; }
+  return {season:cur.season, seasonWeek:weekNum-cur.startWeek+1};
+}
+// Season 1/2 weeks intentionally keep showing as plain "Week N" — only
+// Season 3 onward gets the "Season N, Week M" treatment.
+function weekLabelFor(weekNum){
+  const s=getSeasonInfo(weekNum);
+  return s.season>=3 ? ('Season '+s.season+', Week '+s.seasonWeek) : ('Week '+weekNum);
+}
+function updateEyebrowW4(weekNum){
+  const s=getSeasonInfo(weekNum);
+  const el=document.getElementById('eyebrow');
+  if(el) el.textContent='Season '+s.season+' — Admin';
+}
+
 let currentWeek = getCurrentWeek();
 let weekData = null;
 const _debounce = {};
@@ -257,7 +282,8 @@ function changeWeek(delta){ currentWeek=Math.max(14,currentWeek+delta); loadWeek
 
 async function loadWeekPoints(){
   _editConfirmed = false; // reset so the warning shows again for a newly loaded week
-  document.getElementById('weekLabel').textContent='Week '+currentWeek;
+  document.getElementById('weekLabel').textContent=weekLabelFor(currentWeek);
+  updateEyebrowW4(currentWeek);
   document.getElementById('weekContent').innerHTML='<div class="loading">Loading…</div>';
   try{
     const res=await fetch(BACKEND_URL+'?action=weekpoints&week='+currentWeek);
@@ -279,11 +305,11 @@ function renderWeekPublishedBadge(){
 function renderWeekTable(){
   const box=document.getElementById('weekContent');
   const hasRows=weekData.rows&&weekData.rows.length>0;
-  const tableHtml=hasRows?buildWeekRows():'<div class="empty-msg">No points data for Week '+currentWeek+' yet. Points populate automatically as referees enter match scores.</div>';
+  const tableHtml=hasRows?buildWeekRows():'<div class="empty-msg">No points data for '+weekLabelFor(currentWeek)+' yet. Points populate automatically as referees enter match scores.</div>';
 
   box.innerHTML=`
     <div class="card">
-      <h2>Week ${currentWeek} — Individual Points <span class="sub">Auto-calculated from match results. All fields editable.</span></h2>
+      <h2>${weekLabelFor(currentWeek)} — Individual Points <span class="sub">Auto-calculated from match results. All fields editable.</span></h2>
       ${hasRows?'<div class="tscroll"><table><thead><tr>'+
         '<th>Rank</th><th class="left">Name</th><th>Gender</th>'+
         '<th>Events</th><th>Singles Won</th><th>Doubles Won</th><th>Bonus</th><th>Total</th><th></th>'+
@@ -291,7 +317,7 @@ function renderWeekTable(){
       <div class="act-row">
         <button class="add-btn" onclick="addPlayer()">+ Add Player</button>
         <button class="pub-btn" id="pubBtn" onclick="publishWeek()">
-          ${weekData.published?'Re-publish Week '+currentWeek:'Publish Week '+currentWeek}</button>
+          ${weekData.published?'Re-publish '+weekLabelFor(currentWeek):'Publish '+weekLabelFor(currentWeek)}</button>
         <span class="pub-note">${weekData.published?'Already published — re-publishing updates overall totals.':'Adds this week\'s points to the overall leaderboard.'}</span>
       </div>
     </div>`;
@@ -453,16 +479,16 @@ async function confirmDelete(){
 async function publishWeek(){
   const alreadyPublished=weekData&&weekData.published;
   const msg=alreadyPublished
-    ?'Re-publish Week '+currentWeek+'? Overall totals will update with your latest edits.'
-    :'Publish Week '+currentWeek+' to the overall leaderboard? This adds all points from this week to the season totals.';
+    ?'Re-publish '+weekLabelFor(currentWeek)+'? Overall totals will update with your latest edits.'
+    :'Publish '+weekLabelFor(currentWeek)+' to the overall leaderboard? This adds all points from this week to the season totals.';
   if(!confirm(msg)) return;
   const btn=document.getElementById('pubBtn'); if(btn){ btn.disabled=true; btn.textContent='Publishing…'; }
   try{
     const res=await fetch(BACKEND_URL,{method:'POST',body:JSON.stringify({action:'publishWeek',week:currentWeek})});
     const out=await res.json();
-    if(out.ok){ weekData.published=true; renderWeekPublishedBadge(); renderWeekTable(); toast('Week '+currentWeek+' published'); }
-    else{ toast(out.error||'Could not publish'); if(btn){btn.disabled=false;btn.textContent='Publish Week '+currentWeek;} }
-  }catch(e){ toast('Network error'); if(btn){btn.disabled=false;btn.textContent='Publish Week '+currentWeek;} }
+    if(out.ok){ weekData.published=true; renderWeekPublishedBadge(); renderWeekTable(); toast(weekLabelFor(currentWeek)+' published'); }
+    else{ toast(out.error||'Could not publish'); if(btn){btn.disabled=false;btn.textContent='Publish '+weekLabelFor(currentWeek);} }
+  }catch(e){ toast('Network error'); if(btn){btn.disabled=false;btn.textContent='Publish '+weekLabelFor(currentWeek);} }
 }
 
 /* ======================== overall ======================== */
