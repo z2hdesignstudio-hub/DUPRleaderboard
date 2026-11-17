@@ -232,6 +232,51 @@ tr.lb-outside td{opacity:.7;}
    ============================================================ */
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbzeZaUXvfqsA1oVqwwnSxdn_JJrYnCJQ5-3vA0-TCJSjMZUP2tRMEl-PawqlxZ5opGbXg/exec";
 
+/* ============================================================
+   DATA SOURCE SWITCH  (Phase 3 of the move to Supabase)
+   'sheets'   = Apps Script, exactly as before (the default for now)
+   'supabase' = read-only data from Supabase. If Supabase fails for any
+                reason the page quietly falls back to Apps Script.
+   To test without affecting players, open the page with ?source=supabase
+   (or ?source=sheets to force the old source).
+   Writes (week points edits, publish, pause) always go to Apps Script for now.
+   The publishable key below is meant to sit in a web page: it can only
+   call the public read functions, every table is closed to it.
+   ============================================================ */
+const DATA_SOURCE_DEFAULT = 'sheets';
+const SUPABASE_URL = 'https://neubnmwtxnsdzlhmvvkr.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_JCaPkfKq4nk5dqW_xYv9bw_EKs0JOau';
+const DATA_SOURCE = (()=>{
+  try{ const q=new URLSearchParams(location.search).get('source'); if(q==='supabase'||q==='sheets') return q; }catch(e){}
+  return DATA_SOURCE_DEFAULT;
+})();
+async function sbRpc(fn, args, signal){
+  const res = await fetch(SUPABASE_URL+'/rest/v1/rpc/'+fn, {method:'POST', signal:signal,
+    headers:{'apikey':SUPABASE_KEY,'Content-Type':'application/json'}, body:JSON.stringify(args||{})});
+  if(!res.ok) throw new Error('Supabase HTTP '+res.status);
+  const data = await res.json();
+  if(!data || data.ok===false) throw new Error((data&&data.error)||'Supabase returned no data');
+  return data;
+}
+// Read with fallback: Supabase first when selected, Apps Script otherwise or if Supabase fails.
+async function readData(sbFn, sbArgs, sheetUrl, signal){
+  if(DATA_SOURCE==='supabase'){
+    try{ return await sbRpc(sbFn, sbArgs, signal); }
+    catch(e){ if(e&&e.name==='AbortError') throw e; console.warn('[data] Supabase failed, using Apps Script:', e&&e.message); }
+  }
+  const res = await fetch(sheetUrl, signal?{signal:signal}:undefined);
+  return await res.json();
+}
+// Small corner tag while testing, so it is obvious which source a page is showing.
+if(DATA_SOURCE==='supabase'){
+  window.addEventListener('DOMContentLoaded',()=>{
+    const t=document.createElement('div'); t.textContent='Data: Supabase (test)';
+    t.style.cssText='position:fixed;left:10px;bottom:10px;z-index:99;font:700 11px Nunito,sans-serif;background:#1c2a1f;color:#a8d600;padding:5px 9px;border-radius:9px;opacity:.85;pointer-events:none';
+    document.body.appendChild(t);
+  });
+}
+// The Week Points tab stays on Apps Script: it shows the unpublished working sheet.
+
 const WEEK14_START = new Date(2026, 5, 13);
 function getCurrentWeek(){
   return 14+Math.floor((Date.now()-WEEK14_START.getTime())/(7*24*3600*1000));
@@ -495,8 +540,7 @@ async function publishWeek(){
 async function loadOverall(){
   document.getElementById('overallContent').innerHTML='<div class="loading">Loading…</div>';
   try{
-    const res=await fetch(BACKEND_URL+'?action=overallpoints');
-    renderOverall(await res.json());
+    renderOverall(await readData('leaderboard_overall', {}, BACKEND_URL+'?action=overallpoints'));
   }catch(e){ document.getElementById('overallContent').innerHTML='<div class="loading">Could not load rankings.</div>'; }
 }
 
