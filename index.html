@@ -233,6 +233,71 @@ tr.lb-outside td{opacity:.7;}
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbzeZaUXvfqsA1oVqwwnSxdn_JJrYnCJQ5-3vA0-TCJSjMZUP2tRMEl-PawqlxZ5opGbXg/exec";
 
 /* ============================================================
+   ADMIN KEY (Step 0, interim lock until the Supabase admin login)
+   Every call this page makes to Apps Script carries the admin key.
+   The page asks for it once; "Remember on this device" keeps it in
+   this browser only. The dashboard is sent as a POST, never a link.
+   Public reads (week and overall points) are sent unchanged.
+   ============================================================ */
+const ADMIN_KEY_STORE='pb_admin_key';
+let ADMIN_SESSION_KEY='';
+function adminKeyCurrent(){ if(ADMIN_SESSION_KEY) return ADMIN_SESSION_KEY; try{ return localStorage.getItem(ADMIN_KEY_STORE)||''; }catch(e){ return ''; } }
+function adminKeyForget(){ ADMIN_SESSION_KEY=''; try{ localStorage.removeItem(ADMIN_KEY_STORE); }catch(e){} }
+function adminLock(){ adminKeyForget(); location.reload(); }
+let _adminAsk=null;
+function adminKeyAsk(msg){
+  if(_adminAsk) return _adminAsk;
+  _adminAsk=new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;z-index:9999;background:rgba(28,42,31,.55);display:flex;align-items:center;justify-content:center;padding:16px';
+    ov.innerHTML='<form style="background:#f4f8f3;border-radius:20px;padding:22px 20px;max-width:360px;width:100%;font-family:Nunito,sans-serif;color:#1c2a1f;box-shadow:0 10px 30px rgba(0,0,0,.25)">'
+      +'<div style="font-family:Fredoka,sans-serif;font-weight:700;font-size:1.2rem;margin-bottom:6px">Admin key</div>'
+      +'<div class="ak-msg" style="font-size:.9rem;color:#6b7d6e;margin-bottom:12px"></div>'
+      +'<input class="ak-in" type="password" autocomplete="current-password" aria-label="Admin key" style="width:100%;padding:12px 14px;border-radius:12px;border:1px solid #cfd8cc;font-size:1rem;margin-bottom:12px">'
+      +'<label style="display:flex;gap:8px;align-items:center;font-size:.85rem;margin-bottom:14px"><input class="ak-rem" type="checkbox" checked> Remember on this device</label>'
+      +'<button type="submit" style="width:100%;padding:12px;border:none;border-radius:12px;background:#8bb800;color:#fff;font-weight:800;font-size:1rem;cursor:pointer">Unlock</button></form>';
+    ov.querySelector('.ak-msg').textContent=msg||'This admin page needs the admin key.';
+    document.body.appendChild(ov);
+    const inp=ov.querySelector('.ak-in'); setTimeout(()=>inp.focus(),50);
+    ov.querySelector('form').onsubmit=ev=>{
+      ev.preventDefault(); const k=inp.value.trim(); if(!k) return;
+      ADMIN_SESSION_KEY=k;
+      try{ if(ov.querySelector('.ak-rem').checked) localStorage.setItem(ADMIN_KEY_STORE,k); else localStorage.removeItem(ADMIN_KEY_STORE); }catch(e){}
+      ov.remove(); _adminAsk=null; resolve(k);
+    };
+  });
+  return _adminAsk;
+}
+const _pbFetch=window.fetch.bind(window);
+window.fetch=async function(url,opts){
+  if(typeof url!=='string'||url.indexOf(BACKEND_URL)!==0) return _pbFetch(url,opts);
+  let payload=null;
+  if(/[?&]action=dashboard(&|$)/.test(url)){
+    payload={action:'dashboard'};
+    try{ const wk=new URL(url).searchParams.get('week'); if(wk) payload.week=Number(wk); }catch(e){}
+  }else if(opts&&String(opts.method||'').toUpperCase()==='POST'&&typeof opts.body==='string'){
+    try{ payload=JSON.parse(opts.body); }catch(e){}
+  }
+  if(!payload) return _pbFetch(url,opts);
+  let res=null;
+  for(let attempt=0;attempt<3;attempt++){
+    const key=adminKeyCurrent()||await adminKeyAsk();
+    res=await _pbFetch(BACKEND_URL,Object.assign({},opts||{},{method:'POST',body:JSON.stringify(Object.assign({},payload,{adminKey:key}))}));
+    let j=null; try{ j=await res.clone().json(); }catch(e){}
+    if(!(j&&j.needKey)) return res;
+    adminKeyForget();
+    await adminKeyAsk('That key did not work. Enter the admin key again.');
+  }
+  return res;
+};
+window.addEventListener('DOMContentLoaded',()=>{
+  const b=document.createElement('button'); b.type='button'; b.textContent='Lock';
+  b.title='Forget the admin key on this device';
+  b.style.cssText='position:fixed;right:10px;bottom:10px;z-index:90;font:800 11px Nunito,sans-serif;background:#1c2a1f;color:#fff;border:none;border-radius:9px;padding:6px 10px;opacity:.75;cursor:pointer';
+  b.onclick=adminLock; document.body.appendChild(b);
+});
+
+/* ============================================================
    DATA SOURCE SWITCH  (Phase 3 of the move to Supabase)
    'sheets'   = Apps Script, exactly as before (the default for now)
    'supabase' = read-only data from Supabase. If Supabase fails for any
